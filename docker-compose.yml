@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: charanim-postgres
+    environment:
+      POSTGRES_DB: character_animator
+      POSTGRES_USER: charanim
+      POSTGRES_PASSWORD: charanim
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U charanim -d character_animator"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: charanim-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: charanim
+      MINIO_ROOT_PASSWORD: charanim123
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web Console
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
+  miniodata:

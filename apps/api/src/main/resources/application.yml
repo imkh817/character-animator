@@ -1,0 +1,55 @@
+spring:
+  application:
+    name: character-animator-api
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:character_animator}
+    username: ${DB_USER:charanim}
+    password: ${DB_PASSWORD:charanim}
+
+  jpa:
+    hibernate:
+      # 스키마의 진실은 Flyway 마이그레이션. Hibernate는 검증만 한다.
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        default_batch_fetch_size: 100
+
+  flyway:
+    enabled: true
+
+server:
+  port: 8080
+
+app:
+  jwt:
+    # 운영 환경에서는 반드시 환경변수로 주입 (32바이트 이상)
+    secret: ${JWT_SECRET:local-dev-only-secret-key-must-be-at-least-32-bytes-long}
+    access-token-ttl: 30m
+    refresh-token-ttl: 14d
+  auth:
+    cookie-secure: ${COOKIE_SECURE:false}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  storage:
+    endpoint: ${STORAGE_ENDPOINT:http://localhost:9000}
+    region: ${STORAGE_REGION:us-east-1}
+    access-key: ${STORAGE_ACCESS_KEY:charanim}
+    secret-key: ${STORAGE_SECRET_KEY:charanim123}
+    bucket: ${STORAGE_BUCKET:character-animator}
+    # 운영(S3/R2)에서는 버킷을 미리 생성하고 false로 둔다
+    auto-create-bucket: ${STORAGE_AUTO_CREATE_BUCKET:true}
+    upload-url-ttl: 10m
+    download-url-ttl: 1h
+  asset:
+    max-size-bytes: 1048576   # SVG 1MB
+  render:
+    max-attempts: 3
+  internal:
+    # 렌더 worker 전용 API 인증. 운영에서는 반드시 환경변수로 주입
+    token: ${INTERNAL_TOKEN:local-dev-internal-token}
+
+logging:
+  level:
+    com.characteranimator: debug

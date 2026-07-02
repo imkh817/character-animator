@@ -1,0 +1,18 @@
+# OS / IDE
+.DS_Store
+.idea/
+*.iml
+.vscode/
+
+# Node
+node_modules/
+dist/
+
+# Java / Gradle
+.gradle/
+build/
+out/
+
+# env
+.env
+.env.local
