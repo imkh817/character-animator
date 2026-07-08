@@ -35,6 +35,30 @@ services:
       timeout: 3s
       retries: 10
 
+  api:
+    build: ./apps/api
+    container_name: charanim-api
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      # 프리사인 URL 호스트가 브라우저(호스트)와 컨테이너 양쪽에서 접근 가능해야 하므로
+      # minio 서비스명 대신 host.docker.internal을 쓴다
+      STORAGE_ENDPOINT: http://host.docker.internal:9000
+    ports:
+      - "8080:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ': > /dev/tcp/localhost/8080' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
 volumes:
   pgdata:
   miniodata:
