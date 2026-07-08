@@ -12,7 +12,7 @@ public enum ErrorCode {
     DUPLICATE_EMAIL(HttpStatus.CONFLICT, "이미 사용 중인 이메일입니다."),
     PROJECT_NOT_FOUND(HttpStatus.NOT_FOUND, "프로젝트를 찾을 수 없습니다."),
     ASSET_NOT_FOUND(HttpStatus.NOT_FOUND, "파일을 찾을 수 없습니다."),
-    UNSUPPORTED_ASSET_TYPE(HttpStatus.BAD_REQUEST, "SVG 파일만 업로드할 수 있습니다."),
+    UNSUPPORTED_ASSET_TYPE(HttpStatus.BAD_REQUEST, "지원하지 않는 파일 형식입니다. (SVG, PNG, JPG, WebP)"),
     ASSET_TOO_LARGE(HttpStatus.BAD_REQUEST, "파일 크기가 제한을 초과했습니다."),
     ASSET_UPLOAD_INCOMPLETE(HttpStatus.CONFLICT, "파일 업로드가 완료되지 않았습니다."),
     ASSET_IN_USE(HttpStatus.CONFLICT, "캐릭터에서 사용 중인 파일은 삭제할 수 없습니다."),

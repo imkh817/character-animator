@@ -7,7 +7,8 @@ services:
       POSTGRES_USER: charanim
       POSTGRES_PASSWORD: charanim
     ports:
-      - "5432:5432"
+      # 호스트 5432는 다른 프로세스가 점유/가로채는 경우가 흔해 5433으로 발행한다
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

@@ -1,0 +1,13 @@
+{
+  "name": "character-animator",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "apps/render-worker",
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
+}

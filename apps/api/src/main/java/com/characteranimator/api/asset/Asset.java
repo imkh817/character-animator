@@ -43,19 +43,22 @@ public class Asset extends BaseEntity {
     protected Asset() {
     }
 
-    private Asset(UUID id, UUID projectId, String originalFilename, String contentType, long sizeBytes) {
+    private Asset(UUID id, UUID projectId, String originalFilename, String contentType,
+                  String extension, long sizeBytes) {
         super(id);
         this.projectId = projectId;
         this.originalFilename = originalFilename;
-        // object key는 클라이언트가 아닌 서버가 결정한다 (경로 조작 방지)
-        this.objectKey = "projects/%s/assets/%s.svg".formatted(projectId, id);
+        // object key는 클라이언트가 아닌 서버가 결정한다 (경로 조작 방지). 확장자도 contentType에서 유도
+        this.objectKey = "projects/%s/assets/%s.%s".formatted(projectId, id, extension);
         this.contentType = contentType;
         this.sizeBytes = sizeBytes;
         this.status = Status.PENDING;
     }
 
-    public static Asset register(UUID projectId, String originalFilename, String contentType, long declaredSizeBytes) {
-        return new Asset(UuidCreator.getTimeOrderedEpoch(), projectId, originalFilename, contentType, declaredSizeBytes);
+    public static Asset register(UUID projectId, String originalFilename, String contentType,
+                                 String extension, long declaredSizeBytes) {
+        return new Asset(UuidCreator.getTimeOrderedEpoch(), projectId, originalFilename,
+                contentType, extension, declaredSizeBytes);
     }
 
     /** 스토리지에서 확인한 실제 크기로 갱신하며 READY로 전환한다. */

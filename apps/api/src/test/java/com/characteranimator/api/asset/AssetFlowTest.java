@@ -88,14 +88,21 @@ class AssetFlowTest {
 
     @Test
     @Order(1)
-    @DisplayName("SVG가 아닌 파일은 등록이 거부된다")
-    void rejectNonSvg() throws Exception {
+    @DisplayName("지원하지 않는 형식은 거부되고, 래스터 이미지(PNG)는 확장자에 맞는 key로 등록된다")
+    void contentTypeValidation() throws Exception {
         mockMvc.perform(post("/api/v1/projects/{id}/assets", projectId)
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"filename\":\"photo.png\",\"contentType\":\"image/png\",\"sizeBytes\":1000}"))
+                        .content("{\"filename\":\"doc.txt\",\"contentType\":\"text/plain\",\"sizeBytes\":1000}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("UNSUPPORTED_ASSET_TYPE"));
+
+        mockMvc.perform(post("/api/v1/projects/{id}/assets", projectId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"filename\":\"bg.png\",\"contentType\":\"image/png\",\"sizeBytes\":1000}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.objectKey").value(org.hamcrest.Matchers.endsWith(".png")));
     }
 
     @Test

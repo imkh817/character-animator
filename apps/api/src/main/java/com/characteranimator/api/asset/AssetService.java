@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.net.URL;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -21,7 +22,13 @@ import java.util.UUID;
 public class AssetService {
 
     private static final Logger log = LoggerFactory.getLogger(AssetService.class);
-    private static final String SVG_CONTENT_TYPE = "image/svg+xml";
+
+    /** 지원 형식과 object key 확장자. 캐릭터 파츠(SVG) + 배경/소품 이미지(래스터) */
+    private static final Map<String, String> SUPPORTED_CONTENT_TYPES = Map.of(
+            "image/svg+xml", "svg",
+            "image/png", "png",
+            "image/jpeg", "jpg",
+            "image/webp", "webp");
 
     private final AssetRepository assetRepository;
     private final ProjectService projectService;
@@ -45,9 +52,10 @@ public class AssetService {
     public RegisteredAsset register(UUID userId, UUID projectId,
                                     String filename, String contentType, long declaredSizeBytes) {
         projectService.getOwned(userId, projectId);
-        validate(contentType, declaredSizeBytes);
+        String extension = validate(contentType, declaredSizeBytes);
 
-        Asset asset = assetRepository.save(Asset.register(projectId, filename, contentType, declaredSizeBytes));
+        Asset asset = assetRepository.save(
+                Asset.register(projectId, filename, contentType, extension, declaredSizeBytes));
         URL uploadUrl = storagePort.issueUploadUrl(
                 asset.getObjectKey(), contentType, properties.storage().uploadUrlTtl());
         return new RegisteredAsset(asset, uploadUrl);
@@ -129,13 +137,15 @@ public class AssetService {
         return asset;
     }
 
-    private void validate(String contentType, long sizeBytes) {
-        if (!SVG_CONTENT_TYPE.equals(contentType)) {
+    private String validate(String contentType, long sizeBytes) {
+        String extension = SUPPORTED_CONTENT_TYPES.get(contentType);
+        if (extension == null) {
             throw new ApiException(ErrorCode.UNSUPPORTED_ASSET_TYPE);
         }
         if (sizeBytes <= 0 || sizeBytes > properties.asset().maxSizeBytes()) {
             throw new ApiException(ErrorCode.ASSET_TOO_LARGE);
         }
+        return extension;
     }
 
     private boolean isReferencedInScene(JsonNode sceneDocument, UUID assetId) {
