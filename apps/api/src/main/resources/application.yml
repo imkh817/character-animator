@@ -31,7 +31,7 @@ app:
   auth:
     cookie-secure: ${COOKIE_SECURE:false}
   cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5174}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
   storage:
     endpoint: ${STORAGE_ENDPOINT:http://localhost:9000}
     region: ${STORAGE_REGION:us-east-1}
