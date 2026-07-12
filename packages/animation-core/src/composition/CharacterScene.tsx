@@ -1,7 +1,8 @@
 import React from 'react';
 import { AbsoluteFill, Img, useCurrentFrame } from 'remotion';
+import { layoutBubble } from '../bubble';
 import { buildSceneTree, getLocalTransform, type SceneTreeNode } from '../interpolate';
-import type { SceneDocument } from '../types';
+import type { BubbleSpec, SceneDocument } from '../types';
 
 /** assetId → 실제 SVG URL. 에디터는 presigned URL, 워커는 다운로드 URL을 넣는다. */
 export type AssetUrlMap = Record<string, string>;
@@ -53,7 +54,7 @@ const NodeView: React.FC<NodeViewProps> = ({ treeNode, document, assetUrls, fram
   }
 
   const t = getLocalTransform(node, document.animations[node.id], frame);
-  const assetUrl = assetUrls[node.assetId];
+  const assetUrl = node.assetId ? assetUrls[node.assetId] : undefined;
 
   return (
     <div
@@ -68,7 +69,9 @@ const NodeView: React.FC<NodeViewProps> = ({ treeNode, document, assetUrls, fram
         opacity: t.opacity,
       }}
     >
-      {assetUrl ? (
+      {node.bubble ? (
+        <BubbleView spec={node.bubble} />
+      ) : assetUrl ? (
         <Img
           src={assetUrl}
           style={{
@@ -83,5 +86,129 @@ const NodeView: React.FC<NodeViewProps> = ({ treeNode, document, assetUrls, fram
         <NodeView key={child.node.id} treeNode={child} document={document} assetUrls={assetUrls} frame={frame} />
       ))}
     </div>
+  );
+};
+
+const FILL = '#ffffff';
+const INK = '#1a1a1a';
+
+/**
+ * 말풍선: 에셋 없이 spec만으로 그린다. 문구 수정 = 문서 수정이라 업로드가 필요 없다.
+ * 에디터의 말풍선 팔레트도 이 컴포넌트를 미리보기로 재사용한다.
+ */
+export const BubbleView: React.FC<{ spec: BubbleSpec }> = ({ spec }) => {
+  const layout = layoutBubble(spec);
+  const { width, height, lines, metrics: m } = layout;
+  const fontFamily = `'${spec.fontFamily}', sans-serif`;
+
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
+      <BubbleOutline layout={layout} />
+      {lines.map((line, i) => (
+        <text
+          key={i}
+          x={layout.textCenterX}
+          y={layout.textTop + i * m.lineHeight + m.lineHeight / 2 + m.fontSize * 0.35}
+          fontFamily={fontFamily}
+          fontSize={m.fontSize}
+          fontWeight={600}
+          fill={INK}
+          textAnchor="middle"
+        >
+          {line}
+        </text>
+      ))}
+    </svg>
+  );
+};
+
+const BubbleOutline: React.FC<{ layout: ReturnType<typeof layoutBubble> }> = ({ layout }) => {
+  const { shape, width, height, body, metrics: m } = layout;
+  const bodyHeight = body.height;
+
+  if (shape === 'plain') {
+    // 자막 박스: 꼬리 없는 각진 사각형
+    return (
+      <rect
+        x={m.stroke / 2}
+        y={m.stroke / 2}
+        width={width - m.stroke}
+        height={height - m.stroke}
+        rx={m.cornerRadius * 0.3}
+        fill={FILL}
+        stroke={INK}
+        strokeWidth={m.stroke}
+      />
+    );
+  }
+
+  if (shape === 'shout') {
+    // 외침: 타원 둘레를 따라 바깥/안쪽 반지름을 번갈아 찍은 뾰족한 폴리곤
+    const cx = width / 2;
+    const cy = height / 2;
+    const rx = width / 2 - m.stroke;
+    const ry = height / 2 - m.stroke;
+    const spikes = 14;
+    const points: string[] = [];
+    for (let i = 0; i < spikes * 2; i++) {
+      const angle = (i * Math.PI) / spikes;
+      const k = i % 2 === 0 ? 1 : 0.78;
+      points.push(`${cx + Math.cos(angle) * rx * k},${cy + Math.sin(angle) * ry * k}`);
+    }
+    return <polygon points={points.join(' ')} fill={FILL} stroke={INK} strokeWidth={m.stroke} />;
+  }
+
+  // 꼬리는 왼쪽 아래. 본체와 겹치는 밑변은 흰 사각형으로 덮어 이음새를 없앤다
+  const tailLeft = Math.min(52, width * 0.2);
+  const tailWidth = m.tailHeight * 0.95;
+  const tail =
+    shape === 'thought' ? null : (
+      <>
+        <path
+          d={`M ${tailLeft} ${bodyHeight - m.stroke} L ${tailLeft + tailWidth} ${bodyHeight - m.stroke} L ${tailLeft + tailWidth * 0.18} ${height - m.stroke / 2} Z`}
+          fill={FILL}
+          stroke={INK}
+          strokeWidth={m.stroke}
+          strokeLinejoin="round"
+        />
+        <rect x={tailLeft + 2} y={bodyHeight - m.stroke * 2} width={tailWidth - 4} height={m.stroke * 2} fill={FILL} />
+      </>
+    );
+
+  return (
+    <>
+      <rect
+        x={m.stroke / 2}
+        y={m.stroke / 2}
+        width={width - m.stroke}
+        height={bodyHeight - m.stroke}
+        // 생각 풍선은 모서리를 크게 굴려 구름 느낌을 낸다
+        rx={shape === 'thought' ? Math.min(m.cornerRadius * 2.4, bodyHeight / 2) : m.cornerRadius}
+        fill={FILL}
+        stroke={INK}
+        strokeWidth={m.stroke}
+      />
+      {tail}
+      {shape === 'thought' && (
+        <>
+          <circle
+            cx={tailLeft + m.tailHeight * 0.35}
+            cy={bodyHeight + m.tailHeight * 0.28}
+            r={m.tailHeight * 0.2}
+            fill={FILL}
+            stroke={INK}
+            strokeWidth={m.stroke * 0.8}
+          />
+          <circle
+            cx={tailLeft}
+            cy={bodyHeight + m.tailHeight * 0.68}
+            r={m.tailHeight * 0.12}
+            fill={FILL}
+            stroke={INK}
+            strokeWidth={m.stroke * 0.7}
+          />
+        </>
+      )}
+    </>
   );
 };

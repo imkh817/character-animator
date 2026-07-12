@@ -6,6 +6,7 @@ import {
 } from '@charanim/animation-core';
 import React, { useEffect, useState } from 'react';
 import { useEditorStore } from '../stores/editorStore';
+import { BUBBLE_FONTS, BUBBLE_SHAPES } from './bubblePresets';
 import { playerController } from './playerController';
 
 const PROPERTY_META: Record<AnimatableProperty, { label: string; step: number }> = {
@@ -120,6 +121,54 @@ export const PropertiesPanel: React.FC = () => {
             }
           }}
         />
+        {node.bubble && (
+          <>
+            <div className="prop-row">
+              <span />
+              <label>모양</label>
+              <select
+                value={node.bubble.shape ?? 'speech'}
+                onChange={(e) =>
+                  store().updateBubble(node.id, { shape: e.target.value as (typeof BUBBLE_SHAPES)[number]['shape'] })
+                }
+              >
+                {BUBBLE_SHAPES.map((s) => (
+                  <option key={s.shape} value={s.shape}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="prop-row">
+              <span />
+              <label>글꼴</label>
+              <select
+                value={node.bubble.fontFamily}
+                onChange={(e) => store().updateBubble(node.id, { fontFamily: e.target.value })}
+              >
+                {BUBBLE_FONTS.map((font) => (
+                  <option key={font.value} value={font.value} style={{ fontFamily: font.value }}>
+                    {font.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="prop-row">
+              <span />
+              <label>글자 크기</label>
+              <NumberInput
+                value={node.bubble.fontSize}
+                step={2}
+                onCommit={(v) =>
+                  store().updateBubble(node.id, { fontSize: Math.max(10, Math.min(200, Math.round(v))) })
+                }
+              />
+            </div>
+            <button className="btn" onClick={() => store().setEditingBubble(node.id)}>
+              💬 문구 수정
+            </button>
+          </>
+        )}
         <div className="prop-row">
           <span />
           <label>부모</label>

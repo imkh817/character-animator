@@ -52,11 +52,29 @@ export interface Keyframe {
   easing: Easing;
 }
 
+/** 말풍선 모양: 일반 대사, 생각(구름), 외침(뾰족), 자막 박스 */
+export type BubbleShape = 'speech' | 'thought' | 'shout' | 'plain';
+
+/**
+ * 말풍선 노드의 내용. 렌더러(CharacterScene)가 이걸 보고 직접 그리므로
+ * 에셋 업로드 없이 문구·스타일을 바꿀 수 있다.
+ */
+export interface BubbleSpec {
+  text: string;
+  fontSize: number;
+  /** CSS font-family 이름 (예: 'Malgun Gothic') */
+  fontFamily: string;
+  /** 없으면 'speech' (하위 호환) */
+  shape?: BubbleShape;
+}
+
 export interface SceneNode {
   id: string;
   name: string;
-  /** 서버 assets 테이블의 UUID → SVG 파일 */
-  assetId: string;
+  /** 서버 assets 테이블의 UUID → 이미지 파일. 말풍선 노드에는 없다 */
+  assetId?: string;
+  /** 말풍선 노드: 있으면 렌더러가 에셋 대신 말풍선을 직접 그린다 */
+  bubble?: BubbleSpec;
   /** 부모 노드. 부모의 트랜스폼을 상속한다 (몸통 회전 → 팔 따라감) */
   parentId: string | null;
   /**

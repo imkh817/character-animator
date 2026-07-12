@@ -1,9 +1,10 @@
 import React, { useRef, useState } from 'react';
 import { ApiError } from '../api/client';
-import { deleteAsset, listAssets, uploadAsset } from '../api/endpoints';
+import { deleteAsset, listAssets } from '../api/endpoints';
 import type { AssetResponse } from '../api/types';
 import { useEditorStore } from '../stores/editorStore';
-import { getFileImageSize, getUrlImageSize } from './svgSize';
+import { getUrlImageSize } from './svgSize';
+import { useAssetUpload } from './useAssetUpload';
 
 export const AssetsPanel: React.FC = () => {
   const projectId = useEditorStore((s) => s.projectId)!;
@@ -12,32 +13,8 @@ export const AssetsPanel: React.FC = () => {
   const addBackgroundFromAsset = useEditorStore((s) => s.addBackgroundFromAsset);
   const setAssets = useEditorStore((s) => s.setAssets);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const onFiles = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    setError(null);
-    setUploading(true);
-    try {
-      for (const file of Array.from(files)) {
-        const size = await getFileImageSize(file);
-        const uploaded = await uploadAsset(projectId, file);
-        // SVG는 캐릭터 파츠로, 사진(래스터)은 배경으로 — 올린 의도에 맞는 기본 동작
-        if (file.type === 'image/svg+xml') {
-          addNodeFromAsset(uploaded, size);
-        } else {
-          addBackgroundFromAsset(uploaded, size);
-        }
-      }
-      setAssets(await listAssets(projectId));
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : '업로드에 실패했습니다.');
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
+  const { uploading, error, setError, uploadFiles } = useAssetUpload();
+  const [dragOver, setDragOver] = useState(false);
 
   const addAs = async (asset: AssetResponse, mode: 'part' | 'background') => {
     if (!asset.downloadUrl) return;
@@ -57,7 +34,23 @@ export const AssetsPanel: React.FC = () => {
   };
 
   return (
-    <div className="panel-section">
+    <div
+      className={`panel-section${dragOver ? ' panel-section--dragover' : ''}`}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes('Files')) {
+          e.preventDefault();
+          setDragOver(true);
+        }
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        void uploadFiles(e.dataTransfer.files);
+      }}
+    >
       <div className="panel-section-head">
         <span className="panel-label">파츠 · 이미지</span>
         <button className="icon-btn" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
@@ -70,21 +63,25 @@ export const AssetsPanel: React.FC = () => {
         accept=".svg,.png,.jpg,.jpeg,.webp,image/svg+xml,image/png,image/jpeg,image/webp"
         multiple
         hidden
-        onChange={(e) => void onFiles(e.target.files)}
+        onChange={(e) => {
+          void uploadFiles(e.target.files).finally(() => {
+            if (fileInputRef.current) fileInputRef.current.value = '';
+          });
+        }}
       />
       {error && <div className="error-text">{error}</div>}
       {assets.length === 0 && (
         <div className="empty-hint">
-          캐릭터 파츠(SVG)나 배경 사진(PNG/JPG)을
+          이미지(SVG/PNG/JPG)를 업로드하거나
           <br />
-          업로드하세요. 캔버스에 바로 추가됩니다.
+          캔버스에 드래그해서 놓으세요.
         </div>
       )}
       {assets.map((asset) => (
         <div
           key={asset.id}
           className="asset-row"
-          onClick={() => void addAs(asset, asset.contentType === 'image/svg+xml' ? 'part' : 'background')}
+          onClick={() => void addAs(asset, 'part')}
           title="클릭: 캔버스에 추가"
         >
           {asset.downloadUrl && <img className="asset-thumb" src={asset.downloadUrl} alt="" />}
@@ -92,7 +89,7 @@ export const AssetsPanel: React.FC = () => {
           <span className="row-actions">
             <button
               className="icon-btn"
-              title="파츠로 추가"
+              title="캔버스에 추가"
               onClick={(e) => {
                 e.stopPropagation();
                 void addAs(asset, 'part');

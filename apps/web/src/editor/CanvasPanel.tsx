@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useEditorStore } from '../stores/editorStore';
 import { CanvasOverlay } from './CanvasOverlay';
 import { playerController } from './playerController';
+import { useAssetUpload } from './useAssetUpload';
 
 /**
  * 캔버스 = @remotion/player. 최종 렌더와 문자 그대로 같은 컴포넌트(CharacterScene)를
@@ -22,6 +23,8 @@ export const CanvasPanel: React.FC = () => {
   const areaRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const [areaSize, setAreaSize] = useState({ width: 0, height: 0 });
+  const [dragOver, setDragOver] = useState(false);
+  const { uploading, error, uploadFiles } = useAssetUpload();
 
   const assetUrls = useMemo(
     () =>
@@ -85,15 +88,47 @@ export const CanvasPanel: React.FC = () => {
     areaSize.height > 0 ? (areaSize.height - 48) / height : 1,
   );
 
+  // OS에서 끌어온 파일을 캔버스에 놓으면 그 위치에 노드로 추가
+  const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragOver(false);
+    const stage = stageRef.current;
+    let position: { x: number; y: number } | undefined;
+    if (stage && scale > 0) {
+      const box = stage.getBoundingClientRect();
+      position = {
+        x: Math.max(0, Math.min(width, (e.clientX - box.left) / scale)),
+        y: Math.max(0, Math.min(height, (e.clientY - box.top) / scale)),
+      };
+    }
+    void uploadFiles(e.dataTransfer.files, position);
+  };
+
   return (
-    <div className="canvas-area" ref={areaRef}>
-      {document.nodes.length === 0 && (
+    <div
+      className={`canvas-area${dragOver ? ' canvas-area--dragover' : ''}`}
+      ref={areaRef}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes('Files')) {
+          e.preventDefault();
+          setDragOver(true);
+        }
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false);
+      }}
+      onDrop={onDrop}
+    >
+      {document.nodes.length === 0 && !dragOver && (
         <div className="canvas-empty-hint">
-          왼쪽에서 SVG 파츠를 업로드하면
+          왼쪽에서 이미지를 업로드하거나
           <br />
-          캔버스에 자동으로 올라옵니다.
+          여기에 파일을 끌어다 놓으세요.
         </div>
       )}
+      {dragOver && <div className="canvas-drop-hint">놓으면 캔버스에 추가됩니다</div>}
+      {uploading && <div className="canvas-upload-badge">업로드 중…</div>}
+      {error && <div className="canvas-upload-badge canvas-upload-badge--error">{error}</div>}
       <div
         ref={stageRef}
         style={{ position: 'relative', width: width * scale, height: height * scale }}

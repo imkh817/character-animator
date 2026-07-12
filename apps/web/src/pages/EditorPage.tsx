@@ -4,6 +4,7 @@ import { ApiError } from '../api/client';
 import { getProject, listAssets, saveScene } from '../api/endpoints';
 import { useEditorStore } from '../stores/editorStore';
 import { AssetsPanel } from '../editor/AssetsPanel';
+import { BubblePanel } from '../editor/BubblePanel';
 import { CanvasPanel } from '../editor/CanvasPanel';
 import { LayersPanel } from '../editor/LayersPanel';
 import { PropertiesPanel } from '../editor/PropertiesPanel';
@@ -18,6 +19,7 @@ export const EditorPage: React.FC = () => {
   const revision = useEditorStore((s) => s.revision);
   const saveState = useEditorStore((s) => s.saveState);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [leftTab, setLeftTab] = useState<'assets' | 'bubbles'>('assets');
 
   // 프로젝트 로드
   useEffect(() => {
@@ -57,7 +59,7 @@ export const EditorPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, [revision]);
 
-  // 단축키: Cmd/Ctrl+Z undo, Shift+Cmd/Ctrl+Z redo
+  // 단축키: Cmd/Ctrl+Z undo, Shift+Cmd/Ctrl+Z redo, Delete/Backspace 선택 노드 삭제
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -66,6 +68,13 @@ export const EditorPage: React.FC = () => {
         e.preventDefault();
         if (e.shiftKey) useEditorStore.getState().redo();
         else useEditorStore.getState().undo();
+      }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !e.metaKey && !e.ctrlKey) {
+        const s = useEditorStore.getState();
+        if (s.selectedNodeId) {
+          e.preventDefault();
+          s.deleteNode(s.selectedNodeId);
+        }
       }
     };
     window.addEventListener('keydown', onKey);
@@ -98,7 +107,15 @@ export const EditorPage: React.FC = () => {
       )}
       <div className="editor-main">
         <div className="side-panel">
-          <AssetsPanel />
+          <div className="panel-tabs">
+            <button className="panel-tab" data-active={leftTab === 'assets'} onClick={() => setLeftTab('assets')}>
+              이미지
+            </button>
+            <button className="panel-tab" data-active={leftTab === 'bubbles'} onClick={() => setLeftTab('bubbles')}>
+              말풍선
+            </button>
+          </div>
+          {leftTab === 'assets' ? <AssetsPanel /> : <BubblePanel />}
           <LayersPanel />
         </div>
         <CanvasPanel />
