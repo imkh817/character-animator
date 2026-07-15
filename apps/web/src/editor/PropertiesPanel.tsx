@@ -1,6 +1,7 @@
 import {
   ANIMATABLE_PROPERTIES,
   ANIMATION_PRESETS,
+  blockRanges,
   getLocalTransform,
   type AnimatableProperty,
 } from '@charanim/animation-core';
@@ -196,34 +197,7 @@ export const PropertiesPanel: React.FC = () => {
         </div>
       </div>
 
-      <div className="panel-section">
-        <div className="panel-section-head">
-          <span className="panel-label">애니메이션</span>
-          {animations && Object.keys(animations).length > 0 && (
-            <button className="icon-btn" onClick={() => store().clearNodeAnimation(node.id)}>
-              지우기
-            </button>
-          )}
-        </div>
-        <div className="preset-grid">
-          {ANIMATION_PRESETS.map((preset) => (
-            <button
-              key={preset.id}
-              className="preset-chip"
-              title={preset.description}
-              onClick={() => {
-                store().applyPreset(node.id, preset.id);
-                playerController.current?.seekTo(0);
-                playerController.current?.play();
-              }}
-            >
-              <span className="preset-emoji">{preset.emoji}</span>
-              {preset.label}
-            </button>
-          ))}
-        </div>
-        <div className="empty-hint">누르면 바로 재생됩니다. 겹쳐 쓸 수도 있어요 (숨쉬기 + 끄덕끄덕).</div>
-      </div>
+      {advancedMode ? <ScenePresetSection nodeId={node.id} /> : <BlockPresetSection nodeId={node.id} />}
 
       <div className="panel-section">
         <div className="panel-section-head">
@@ -263,5 +237,109 @@ export const PropertiesPanel: React.FC = () => {
         </div>
       </div>
     </>
+  );
+};
+
+/** 기본 모드: 프리셋과 숨김을 "선택된 장면"에만 적용한다 (스토리보드 → 키프레임 컴파일) */
+const BlockPresetSection: React.FC<{ nodeId: string }> = ({ nodeId }) => {
+  const document = useEditorStore((s) => s.document)!;
+  const selectedBlockId = useEditorStore((s) => s.selectedBlockId);
+  const store = useEditorStore.getState;
+
+  const storyboard = document.storyboard;
+  const blockIndex = storyboard?.blocks.findIndex((b) => b.id === selectedBlockId) ?? -1;
+  if (!storyboard || blockIndex < 0) return null;
+  const block = storyboard.blocks[blockIndex]!;
+  const state = block.nodes[nodeId];
+  const activePresets = state?.presetIds ?? [];
+  const hidden = state?.hidden === true;
+  const blockStart = blockRanges(storyboard)[blockIndex]!.start;
+
+  // 바꾸자마자 그 장면부터 재생해 결과를 바로 보여준다
+  const previewBlock = () => {
+    playerController.current?.seekTo(blockStart);
+    playerController.current?.play();
+  };
+
+  return (
+    <div className="panel-section">
+      <div className="panel-section-head">
+        <span className="panel-label">애니메이션 · 장면 {blockIndex + 1}</span>
+        {activePresets.length > 0 && (
+          <button className="icon-btn" onClick={() => store().clearBlockPresets(block.id, nodeId)}>
+            지우기
+          </button>
+        )}
+      </div>
+      <label className="block-visibility">
+        <input
+          type="checkbox"
+          checked={!hidden}
+          onChange={(e) => {
+            store().setBlockNodeHidden(block.id, nodeId, !e.target.checked);
+            playerController.current?.seekTo(blockStart);
+          }}
+        />
+        이 장면에서 보이기
+      </label>
+      <div className="preset-grid">
+        {ANIMATION_PRESETS.map((preset) => (
+          <button
+            key={preset.id}
+            className="preset-chip"
+            data-active={activePresets.includes(preset.id)}
+            title={preset.description}
+            onClick={() => {
+              store().toggleBlockPreset(block.id, nodeId, preset.id);
+              previewBlock();
+            }}
+          >
+            <span className="preset-emoji">{preset.emoji}</span>
+            {preset.label}
+          </button>
+        ))}
+      </div>
+      <div className="empty-hint">
+        장면 {blockIndex + 1}에서만 움직여요. 다시 누르면 꺼지고, 겹쳐 쓸 수도 있어요 (숨쉬기 + 끄덕끄덕).
+      </div>
+    </div>
+  );
+};
+
+/** 고급 모드: 기존 동작 — 프리셋을 장면 전체 길이에 적용한다 */
+const ScenePresetSection: React.FC<{ nodeId: string }> = ({ nodeId }) => {
+  const document = useEditorStore((s) => s.document)!;
+  const store = useEditorStore.getState;
+  const animations = document.animations[nodeId];
+
+  return (
+    <div className="panel-section">
+      <div className="panel-section-head">
+        <span className="panel-label">애니메이션</span>
+        {animations && Object.keys(animations).length > 0 && (
+          <button className="icon-btn" onClick={() => store().clearNodeAnimation(nodeId)}>
+            지우기
+          </button>
+        )}
+      </div>
+      <div className="preset-grid">
+        {ANIMATION_PRESETS.map((preset) => (
+          <button
+            key={preset.id}
+            className="preset-chip"
+            title={preset.description}
+            onClick={() => {
+              store().applyPreset(nodeId, preset.id);
+              playerController.current?.seekTo(0);
+              playerController.current?.play();
+            }}
+          >
+            <span className="preset-emoji">{preset.emoji}</span>
+            {preset.label}
+          </button>
+        ))}
+      </div>
+      <div className="empty-hint">누르면 바로 재생됩니다. 겹쳐 쓸 수도 있어요 (숨쉬기 + 끄덕끄덕).</div>
+    </div>
   );
 };

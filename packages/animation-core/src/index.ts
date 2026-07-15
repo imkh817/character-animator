@@ -4,4 +4,5 @@ export * from './easing';
 export * from './interpolate';
 export * from './math';
 export * from './presets';
+export * from './storyboard';
 export * from './composition/CharacterScene';

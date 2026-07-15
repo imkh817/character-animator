@@ -93,6 +93,30 @@ export interface SceneNode {
 
 export type NodeAnimations = Partial<Record<AnimatableProperty, Keyframe[]>>;
 
+/** 스토리보드 블록 안에서 노드 하나의 연출 상태 */
+export interface BlockNodeState {
+  /** 이 장면 동안 실행할 프리셋들. 겹쳐 쓸 수 있고, 겹치는 속성은 뒤가 우선 */
+  presetIds?: string[];
+  /** 이 장면에서 숨김 (opacity 0 hold 키프레임으로 컴파일) */
+  hidden?: boolean;
+}
+
+/** 스토리보드의 한 장면. 길이와 노드별 연출만 가진다 — 시간·키프레임 개념이 없다 */
+export interface StoryboardBlock {
+  id: string;
+  durationInFrames: number;
+  /** nodeId → 이 장면에서의 상태 */
+  nodes: Record<string, BlockNodeState>;
+}
+
+/**
+ * 초보자용 장면(블록) 편집 모델. 프리셋과 같은 원칙으로 "블록 = 키프레임 생성기"이며,
+ * 항상 animations로 컴파일된 결과가 저장된다. 렌더러와 워커는 스토리보드의 존재를 모른다.
+ */
+export interface Storyboard {
+  blocks: StoryboardBlock[];
+}
+
 export interface SceneDocument {
   schemaVersion: 1;
   settings: SceneSettings;
@@ -100,6 +124,11 @@ export interface SceneDocument {
   nodes: SceneNode[];
   /** nodeId → 속성별 키프레임 (frame 오름차순 정렬 불변식) */
   animations: Record<string, NodeAnimations>;
+  /**
+   * 에디터 전용 편집 모델 (선택적·additive라 schemaVersion 유지).
+   * 없으면 에디터가 문서 길이 전체를 덮는 블록 하나로 초기화한다.
+   */
+  storyboard?: Storyboard;
 }
 
 export const CURRENT_SCHEMA_VERSION = 1 as const;

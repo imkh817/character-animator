@@ -1,5 +1,7 @@
 import {
   IDENTITY_MAT,
+  blockRanges,
+  compileStoryboard,
   createDefaultTransform,
   decomposeMatrix,
   getPreset,
@@ -8,6 +10,7 @@ import {
   layoutBubble,
   multiplyMat,
   sampleKeyframes,
+  storyboardTotalFrames,
   type AnimatableProperty,
   type BubbleSpec,
   type SceneDocument,
@@ -34,6 +37,8 @@ interface EditorState {
   revision: number;
   assets: AssetResponse[];
   selectedNodeId: string | null;
+  /** 스토리보드에서 선택된 장면. 간단 모드의 프리셋/숨김 편집이 이 장면에 적용된다 */
+  selectedBlockId: string | null;
   /** 인라인 편집 중인 말풍선 노드. 캔버스 위에 텍스트 입력창이 겹쳐진다 */
   editingBubbleId: string | null;
   currentFrame: number;
@@ -84,6 +89,20 @@ interface EditorState {
   applyPreset: (nodeId: string, presetId: string) => void;
   /** 노드의 모든 애니메이션 제거 (정지 상태로) */
   clearNodeAnimation: (nodeId: string) => void;
+
+  /** 장면 선택: 재생 위치도 그 장면의 시작으로 이동한다 */
+  selectBlock: (blockId: string) => void;
+  /** 장면 추가 (기본 2초). 추가된 장면을 선택한다 */
+  addBlock: () => void;
+  /** 장면 삭제. 마지막 하나는 지울 수 없다 */
+  deleteBlock: (blockId: string) => void;
+  moveBlock: (blockId: string, direction: 1 | -1) => void;
+  setBlockDuration: (blockId: string, durationInFrames: number) => void;
+  /** 장면에서 노드의 프리셋 켜기/끄기 (겹쳐 쓰기 가능) */
+  toggleBlockPreset: (blockId: string, nodeId: string, presetId: string) => void;
+  clearBlockPresets: (blockId: string, nodeId: string) => void;
+  setBlockNodeHidden: (blockId: string, nodeId: string, hidden: boolean) => void;
+
   updateSettings: (patch: Partial<SceneDocument['settings']>) => void;
   undo: () => void;
   redo: () => void;
@@ -106,6 +125,25 @@ export const useEditorStore = create<EditorState>()(
       });
     }
 
+    /**
+     * 스토리보드 변경은 항상 여기로: 변경 후 즉시 animations로 컴파일한다.
+     * 스토리보드가 상태를 가진 노드의 트랙은 통째로 대체되고, 나머지는 보존된다.
+     */
+    function commitStoryboard(mutator: (doc: SceneDocument) => void): void {
+      commitDocument((doc) => {
+        mutator(doc);
+        if (!doc.storyboard) return;
+        const compiled = compileStoryboard(doc.storyboard, doc.nodes, doc.settings.fps);
+        doc.settings.durationInFrames = compiled.durationInFrames;
+        for (const [nodeId, tracks] of Object.entries(compiled.animations)) {
+          if (Object.keys(tracks).length === 0) delete doc.animations[nodeId];
+          else doc.animations[nodeId] = tracks;
+        }
+      });
+      // 길이가 줄었을 수 있으므로 재생 위치를 범위 안으로 클램프
+      get().setFrame(get().currentFrame);
+    }
+
     return {
       projectId: null,
       title: '',
@@ -115,6 +153,7 @@ export const useEditorStore = create<EditorState>()(
       revision: 0,
       assets: [],
       selectedNodeId: null,
+      selectedBlockId: null,
       editingBubbleId: null,
       currentFrame: 0,
       playing: false,
@@ -132,6 +171,22 @@ export const useEditorStore = create<EditorState>()(
           state.projectId = detail.id;
           state.title = detail.title;
           state.document = detail.sceneDocument;
+          // 스토리보드 보장 (메모리에서만 — dirty로 만들지 않는다. 다음 편집 때 함께 저장된다)
+          const doc = state.document;
+          if (!doc.storyboard || doc.storyboard.blocks.length === 0) {
+            doc.storyboard = {
+              blocks: [{ id: nanoid(10), durationInFrames: doc.settings.durationInFrames, nodes: {} }],
+            };
+          } else {
+            // 고급 모드에서 문서 길이를 직접 바꿨을 수 있다 → 마지막 장면이 차이를 흡수
+            const diff = doc.settings.durationInFrames - storyboardTotalFrames(doc.storyboard);
+            if (diff !== 0) {
+              const last = doc.storyboard.blocks[doc.storyboard.blocks.length - 1]!;
+              last.durationInFrames = Math.max(1, last.durationInFrames + diff);
+              doc.settings.durationInFrames = storyboardTotalFrames(doc.storyboard);
+            }
+          }
+          state.selectedBlockId = doc.storyboard.blocks[0]!.id;
           state.savedVersion = detail.sceneVersion;
           state.saveState = 'saved';
           state.revision = 0;
@@ -277,6 +332,9 @@ export const useEditorStore = create<EditorState>()(
           }
           d.nodes = d.nodes.filter((n) => n.id !== nodeId);
           delete d.animations[nodeId];
+          if (d.storyboard) {
+            for (const block of d.storyboard.blocks) delete block.nodes[nodeId];
+          }
         });
         if (get().selectedNodeId === nodeId) set({ selectedNodeId: null });
         if (get().editingBubbleId === nodeId) set({ editingBubbleId: null });
@@ -407,9 +465,89 @@ export const useEditorStore = create<EditorState>()(
           delete d.animations[nodeId];
         }),
 
+      selectBlock: (blockId) => {
+        const doc = get().document;
+        if (!doc?.storyboard) return;
+        const range = blockRanges(doc.storyboard).find((r) => r.id === blockId);
+        if (!range) return;
+        set({ selectedBlockId: blockId });
+        get().setFrame(range.start);
+      },
+
+      addBlock: () => {
+        const doc = get().document;
+        if (!doc?.storyboard) return;
+        const id = nanoid(10);
+        commitStoryboard((d) => {
+          d.storyboard!.blocks.push({ id, durationInFrames: d.settings.fps * 2, nodes: {} });
+        });
+        get().selectBlock(id);
+      },
+
+      deleteBlock: (blockId) => {
+        const doc = get().document;
+        if (!doc?.storyboard || doc.storyboard.blocks.length <= 1) return;
+        commitStoryboard((d) => {
+          d.storyboard!.blocks = d.storyboard!.blocks.filter((b) => b.id !== blockId);
+        });
+        if (get().selectedBlockId === blockId) {
+          get().selectBlock(get().document!.storyboard!.blocks[0]!.id);
+        }
+      },
+
+      moveBlock: (blockId, direction) =>
+        commitStoryboard((d) => {
+          const blocks = d.storyboard!.blocks;
+          const index = blocks.findIndex((b) => b.id === blockId);
+          const target = index + direction;
+          if (index < 0 || target < 0 || target >= blocks.length) return;
+          const [block] = blocks.splice(index, 1);
+          blocks.splice(target, 0, block!);
+        }),
+
+      setBlockDuration: (blockId, durationInFrames) =>
+        commitStoryboard((d) => {
+          const block = d.storyboard!.blocks.find((b) => b.id === blockId);
+          if (block) block.durationInFrames = Math.max(1, Math.round(durationInFrames));
+        }),
+
+      toggleBlockPreset: (blockId, nodeId, presetId) =>
+        commitStoryboard((d) => {
+          const block = d.storyboard!.blocks.find((b) => b.id === blockId);
+          if (!block) return;
+          const state = (block.nodes[nodeId] ??= {});
+          const presetIds = state.presetIds ?? [];
+          state.presetIds = presetIds.includes(presetId)
+            ? presetIds.filter((p) => p !== presetId)
+            : [...presetIds, presetId];
+        }),
+
+      clearBlockPresets: (blockId, nodeId) =>
+        commitStoryboard((d) => {
+          const state = d.storyboard!.blocks.find((b) => b.id === blockId)?.nodes[nodeId];
+          if (state) state.presetIds = [];
+        }),
+
+      setBlockNodeHidden: (blockId, nodeId, hidden) =>
+        commitStoryboard((d) => {
+          const block = d.storyboard!.blocks.find((b) => b.id === blockId);
+          if (!block) return;
+          const state = (block.nodes[nodeId] ??= {});
+          state.hidden = hidden;
+        }),
+
       updateSettings: (patch) =>
         commitDocument((d) => {
           Object.assign(d.settings, patch);
+          // 고급 모드에서 길이를 직접 바꾸면 마지막 장면이 차이를 흡수해 스토리보드와 동기화
+          if (patch.durationInFrames !== undefined && d.storyboard) {
+            const diff = d.settings.durationInFrames - storyboardTotalFrames(d.storyboard);
+            if (diff !== 0) {
+              const last = d.storyboard.blocks[d.storyboard.blocks.length - 1]!;
+              last.durationInFrames = Math.max(1, last.durationInFrames + diff);
+              d.settings.durationInFrames = storyboardTotalFrames(d.storyboard);
+            }
+          }
         }),
 
       undo: () =>

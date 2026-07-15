@@ -1,4 +1,4 @@
-import { ANIMATABLE_PROPERTIES } from '@charanim/animation-core';
+import { ANIMATABLE_PROPERTIES, blockRanges, getPreset } from '@charanim/animation-core';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useEditorStore } from '../stores/editorStore';
 import { playerController } from './playerController';
@@ -14,17 +14,65 @@ const PROPERTY_LABEL: Record<string, string> = {
 
 export const Timeline: React.FC = () => {
   const advancedMode = useEditorStore((s) => s.advancedMode);
-  return advancedMode ? <AdvancedTimeline /> : <SimpleTransport />;
+  return advancedMode ? <AdvancedTimeline /> : <StoryboardTimeline />;
 };
 
-/** 기본 모드: 유튜브식 재생 바. 프레임/키프레임 개념이 등장하지 않는다. */
-const SimpleTransport: React.FC = () => {
+/**
+ * 장면 길이(초) 입력. 스피너 없는 일반 텍스트 입력으로, 편집 중에는 로컬 문자열을
+ * 유지하다가 blur/Enter에 커밋한다 — 지우고 새로 타이핑할 수 있다.
+ */
+const SceneDurationInput: React.FC<{
+  seconds: number;
+  onCommit: (seconds: number) => void;
+}> = ({ seconds, onCommit }) => {
+  const [text, setText] = useState(String(seconds));
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) setText(String(seconds));
+  }, [seconds, focused]);
+
+  const commit = () => {
+    setFocused(false);
+    const parsed = Number(text);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      onCommit(Math.min(60, parsed));
+    } else {
+      setText(String(seconds)); // 빈 값/이상한 값이면 원래대로
+    }
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={text}
+      onFocus={(e) => {
+        setFocused(true);
+        e.target.select(); // 클릭하자마자 전체 선택 → 바로 덮어쓰기
+      }}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+      }}
+    />
+  );
+};
+
+/**
+ * 기본 모드: 스토리보드. 영상을 "장면"의 나열로 편집한다 — 프레임/키프레임 개념이
+ * 등장하지 않고, 각 장면의 연출(프리셋/숨김)은 속성 패널에서 고른다.
+ */
+const StoryboardTimeline: React.FC = () => {
   const document = useEditorStore((s) => s.document)!;
   const currentFrame = useEditorStore((s) => s.currentFrame);
   const playing = useEditorStore((s) => s.playing);
+  const selectedBlockId = useEditorStore((s) => s.selectedBlockId);
   const store = useEditorStore.getState;
 
   const { durationInFrames, fps } = document.settings;
+  const storyboard = document.storyboard;
   const barRef = useRef<HTMLDivElement>(null);
 
   const scrubTo = (clientX: number) => {
@@ -36,56 +84,129 @@ const SimpleTransport: React.FC = () => {
   };
 
   const progress = durationInFrames > 1 ? currentFrame / (durationInFrames - 1) : 0;
-  const durationSeconds = durationInFrames / fps;
+  const ranges = storyboard ? blockRanges(storyboard) : [];
 
   return (
-    <div className="timeline timeline--simple">
-      <button
-        className="btn"
-        onClick={() => (playing ? playerController.current?.pause() : playerController.current?.play())}
-        style={{ width: 38, justifyContent: 'center' }}
-      >
-        {playing ? '❚❚' : '▶'}
-      </button>
-      <div
-        ref={barRef}
-        className="scrub-bar"
-        onPointerDown={(e) => {
-          playerController.current?.pause();
-          (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-          scrubTo(e.clientX);
-        }}
-        onPointerMove={(e) => {
-          if (e.buttons === 1) scrubTo(e.clientX);
-        }}
-      >
-        <div className="scrub-fill" style={{ width: `${progress * 100}%` }} />
-        <div className="scrub-handle" style={{ left: `${progress * 100}%` }} />
-      </div>
-      <span className="timecode">
-        {(currentFrame / fps).toFixed(1)}s / {durationSeconds.toFixed(1)}s
-      </span>
-      <label className="panel-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        길이
-        <input
-          type="number"
-          min={1}
-          max={60}
-          step={0.5}
-          value={Math.round(durationSeconds * 2) / 2}
-          onChange={(e) => {
-            const seconds = Number(e.target.value);
-            if (Number.isFinite(seconds) && seconds > 0) {
-              store().updateSettings({ durationInFrames: Math.max(2, Math.round(seconds * fps)) });
-            }
+    <div className="timeline timeline--storyboard">
+      <div className="timeline--simple" style={{ height: 46 }}>
+        <button
+          className="btn"
+          onClick={() => (playing ? playerController.current?.pause() : playerController.current?.play())}
+          style={{ width: 38, justifyContent: 'center' }}
+        >
+          {playing ? '❚❚' : '▶'}
+        </button>
+        <div
+          ref={barRef}
+          className="scrub-bar"
+          onPointerDown={(e) => {
+            playerController.current?.pause();
+            (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+            scrubTo(e.clientX);
           }}
-          style={{ width: 56 }}
-        />
-        초
-      </label>
-      <button className="btn btn--ghost" onClick={() => store().setAdvancedMode(true)}>
-        ⚙ 타임라인 편집 (고급)
-      </button>
+          onPointerMove={(e) => {
+            if (e.buttons === 1) scrubTo(e.clientX);
+          }}
+        >
+          <div className="scrub-fill" style={{ width: `${progress * 100}%` }} />
+          <div className="scrub-handle" style={{ left: `${progress * 100}%` }} />
+        </div>
+        <span className="timecode">
+          {(currentFrame / fps).toFixed(1)}s / {(durationInFrames / fps).toFixed(1)}s
+        </span>
+        <span className="timeline-legend">
+          장면을 고르고 파츠를 클릭하면, 오른쪽에서 그 장면의 움직임을 고를 수 있어요.
+        </span>
+        <button className="btn btn--ghost" onClick={() => store().setAdvancedMode(true)}>
+          ⚙ 타임라인 편집 (고급)
+        </button>
+      </div>
+      {storyboard && (
+        <div className="storyboard-strip">
+          {storyboard.blocks.map((block, i) => {
+            const range = ranges[i]!;
+            const end = range.start + range.durationInFrames - 1;
+            const playingHere = currentFrame >= range.start && currentFrame <= end;
+            const emojis = [
+              ...new Set(
+                Object.values(block.nodes).flatMap(
+                  (state) => state.presetIds?.map((id) => getPreset(id)?.emoji ?? '').filter(Boolean) ?? [],
+                ),
+              ),
+            ];
+            const hiddenCount = Object.values(block.nodes).filter((s) => s.hidden).length;
+            return (
+              <div
+                key={block.id}
+                className="scene-card"
+                data-active={block.id === selectedBlockId}
+                onClick={() => {
+                  playerController.current?.pause();
+                  store().selectBlock(block.id);
+                }}
+              >
+                {playingHere && (
+                  <div
+                    className="scene-card-progress"
+                    style={{ width: `${((currentFrame - range.start + 1) / range.durationInFrames) * 100}%` }}
+                  />
+                )}
+                <div className="scene-card-head">
+                  <span className="scene-card-title">장면 {i + 1}</span>
+                  <span className="row-actions">
+                    <button
+                      className="icon-btn"
+                      title="앞으로"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        store().moveBlock(block.id, -1);
+                      }}
+                    >
+                      ←
+                    </button>
+                    <button
+                      className="icon-btn"
+                      title="뒤로"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        store().moveBlock(block.id, 1);
+                      }}
+                    >
+                      →
+                    </button>
+                    {storyboard.blocks.length > 1 && (
+                      <button
+                        className="icon-btn"
+                        title="장면 삭제"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          store().deleteBlock(block.id);
+                        }}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </span>
+                </div>
+                <div className="scene-card-summary">
+                  {emojis.length > 0 ? emojis.join(' ') : <span className="scene-card-empty">연출 없음</span>}
+                  {hiddenCount > 0 && <span title={`숨긴 파츠 ${hiddenCount}개`}> 🙈{hiddenCount}</span>}
+                </div>
+                <label className="scene-card-duration" onClick={(e) => e.stopPropagation()}>
+                  <SceneDurationInput
+                    seconds={Math.round((range.durationInFrames / fps) * 10) / 10}
+                    onCommit={(seconds) => store().setBlockDuration(block.id, Math.round(seconds * fps))}
+                  />
+                  초
+                </label>
+              </div>
+            );
+          })}
+          <button className="scene-card scene-card--add" onClick={() => store().addBlock()}>
+            + 장면 추가
+          </button>
+        </div>
+      )}
     </div>
   );
 };
