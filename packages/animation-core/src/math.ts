@@ -85,3 +85,37 @@ export function invertLinear(m: Mat2D): Pick<Mat2D, 'a' | 'b' | 'c' | 'd'> | nul
 export function transformVector(m: Pick<Mat2D, 'a' | 'b' | 'c' | 'd'>, x: number, y: number): Vec2 {
   return { x: m.a * x + m.c * y, y: m.b * x + m.d * y };
 }
+
+export function transformPoint(m: Mat2D, x: number, y: number): Vec2 {
+  return { x: m.a * x + m.c * y + m.tx, y: m.b * x + m.d * y + m.ty };
+}
+
+/** 이동까지 포함한 완전한 아핀 역행렬. 재부모화 시 월드 좌표 보존에 사용한다. */
+export function invertMat(m: Mat2D): Mat2D | null {
+  const lin = invertLinear(m);
+  if (!lin) return null;
+  return {
+    ...lin,
+    tx: -(lin.a * m.tx + lin.c * m.ty),
+    ty: -(lin.b * m.tx + lin.d * m.ty),
+  };
+}
+
+/**
+ * getLocalMatrix의 역연산: 행렬을 pivot 기준 TRS(Transform의 x/y/rotation/scale)로 분해한다.
+ * 부모의 회전 × 비균일 스케일 조합이 만드는 skew는 TRS로 표현할 수 없어 버려지지만,
+ * pivot 지점은 getLocalMatrix에서 항상 (x+pivot, y+pivot)으로 사상되므로
+ * pivot의 월드 위치만은 skew 여부와 무관하게 정확히 보존된다.
+ */
+export function decomposeMatrix(
+  m: Mat2D,
+  pivot: Vec2,
+): Pick<Transform, 'x' | 'y' | 'rotation' | 'scaleX' | 'scaleY'> {
+  const rotation = (Math.atan2(m.b, m.a) * 180) / Math.PI;
+  const scaleX = Math.hypot(m.a, m.b);
+  const det = m.a * m.d - m.b * m.c;
+  // det/scaleX로 구해야 반전(음수 스케일)이 scaleY 부호로 보존된다
+  const scaleY = scaleX < 1e-9 ? Math.hypot(m.c, m.d) : det / scaleX;
+  const p = transformPoint(m, pivot.x, pivot.y);
+  return { x: p.x - pivot.x, y: p.y - pivot.y, rotation, scaleX, scaleY };
+}

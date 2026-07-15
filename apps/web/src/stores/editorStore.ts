@@ -1,7 +1,12 @@
 import {
+  IDENTITY_MAT,
   createDefaultTransform,
+  decomposeMatrix,
   getPreset,
+  getWorldMatrix,
+  invertMat,
   layoutBubble,
+  multiplyMat,
   sampleKeyframes,
   type AnimatableProperty,
   type BubbleSpec,
@@ -292,14 +297,23 @@ export const useEditorStore = create<EditorState>()(
       setNodeParent: (nodeId, parentId) =>
         commitDocument((d) => {
           const n = d.nodes.find((x) => x.id === nodeId);
-          if (!n) return;
+          if (!n || n.parentId === parentId) return;
           // 순환 방지: 새 부모의 조상 체인에 자신이 있으면 거부
           let cursor = parentId;
           while (cursor) {
             if (cursor === nodeId) return;
             cursor = d.nodes.find((x) => x.id === cursor)?.parentId ?? null;
           }
+          // 월드 위치 보존: 새 로컬 = (새 부모 월드)⁻¹ × 기존 월드.
+          // 키프레임 값은 옛 좌표계 기준이므로 건드리지 않고 base만 보정한다.
+          const baseOnly: SceneDocument = { ...d, animations: {} };
+          const oldWorld = getWorldMatrix(baseOnly, nodeId, 0);
+          const newParentWorld = parentId ? getWorldMatrix(baseOnly, parentId, 0) : IDENTITY_MAT;
+          const inv = invertMat(newParentWorld);
           n.parentId = parentId;
+          if (inv) {
+            Object.assign(n.base, decomposeMatrix(multiplyMat(inv, oldWorld), n.pivot));
+          }
         }),
 
       setNodePivot: (nodeId, axis, value) =>
