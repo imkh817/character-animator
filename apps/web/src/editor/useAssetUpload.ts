@@ -1,8 +1,10 @@
+import type { NodeOutline } from '@charanim/animation-core';
 import { useState } from 'react';
 import { ApiError } from '../api/client';
 import { listAssets, uploadAsset } from '../api/endpoints';
 import { useEditorStore } from '../stores/editorStore';
 import { getFileImageSize } from './svgSize';
+import { isOutlineEnabled, isTraceEnabled, isTraceable, traceFileToSvg } from './traceSvg';
 
 const ACCEPTED_TYPES = new Set(['image/svg+xml', 'image/png', 'image/jpeg', 'image/webp']);
 
@@ -33,9 +35,26 @@ export function useAssetUpload() {
     setUploading(true);
     try {
       for (const file of accepted) {
-        const size = await getFileImageSize(file);
-        const uploaded = await uploadAsset(projectId, file);
-        useEditorStore.getState().addNodeFromAsset(uploaded, size, position);
+        let toUpload = file;
+        let outline: NodeOutline | undefined;
+        // PNG/WebP는 벡터 SVG로 트레이싱해서 올린다 (토글로 끌 수 있음). 실패하면 원본 그대로
+        if (isTraceEnabled() && isTraceable(file)) {
+          try {
+            const traced = await traceFileToSvg(file);
+            toUpload = traced.file;
+            outline = {
+              paths: traced.silhouette.paths,
+              strokeWidth: traced.silhouette.strokeWidth,
+              // 토글이 꺼져 있어도 패스는 저장한다 — 나중에 속성 패널에서 켤 수 있게
+              style: isOutlineEnabled() ? 'dashed' : 'none',
+            };
+          } catch {
+            toUpload = file;
+          }
+        }
+        const size = await getFileImageSize(toUpload);
+        const uploaded = await uploadAsset(projectId, toUpload);
+        useEditorStore.getState().addNodeFromAsset(uploaded, size, position, outline);
       }
       useEditorStore.getState().setAssets(await listAssets(projectId));
     } catch (e) {

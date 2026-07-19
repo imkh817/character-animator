@@ -4,6 +4,7 @@ import {
   blockRanges,
   getLocalTransform,
   type AnimatableProperty,
+  type OutlineStyle,
 } from '@charanim/animation-core';
 import React, { useEffect, useState } from 'react';
 import { useEditorStore } from '../stores/editorStore';
@@ -65,11 +66,57 @@ function round3(n: number): number {
 export const PropertiesPanel: React.FC = () => {
   const document = useEditorStore((s) => s.document)!;
   const selectedNodeId = useEditorStore((s) => s.selectedNodeId);
+  const selectedNodeIds = useEditorStore((s) => s.selectedNodeIds);
   const currentFrame = useEditorStore((s) => s.currentFrame);
   const advancedMode = useEditorStore((s) => s.advancedMode);
   const store = useEditorStore.getState;
 
   const node = document.nodes.find((n) => n.id === selectedNodeId);
+
+  // 여러 노드 선택(드래그 박스·그룹): 묶기/해제 + 그룹 전체 애니메이션/테두리
+  if (selectedNodeIds.length > 1) {
+    const selectedNodes = document.nodes.filter((n) => selectedNodeIds.includes(n.id));
+    const grouped = selectedNodes.some((n) => n.groupId);
+    const groupIds = new Set(selectedNodes.filter((n) => n.groupId).map((n) => n.groupId!));
+    const isSingleWholeGroup = groupIds.size === 1 && selectedNodes.every((n) => n.groupId);
+    const primary = selectedNodes.find((n) => n.id === selectedNodeId) ?? selectedNodes[0];
+    return (
+      <>
+        <div className="panel-section">
+          <span className="panel-label">선택 · {selectedNodes.length}개</span>
+          <div className="empty-hint">
+            {isSingleWholeGroup
+              ? '묶여 있는 노드들이에요. 하나를 움직이면 함께 움직입니다. Alt+클릭하면 파츠 하나만 선택해 피벗·개별 애니메이션을 줄 수 있어요.'
+              : '캔버스에서 함께 드래그해 옮길 수 있어요.'}
+          </div>
+          {!isSingleWholeGroup && (
+            <button className="btn" onClick={() => store().groupSelectedNodes()}>
+              🔗 묶기
+            </button>
+          )}
+          {grouped && (
+            <button className="btn" onClick={() => store().ungroupSelectedNodes()}>
+              묶기 해제
+            </button>
+          )}
+          <div className="prop-row prop-row--simple">
+            <label>불투명</label>
+            <NumberInput
+              value={primary?.base.opacity ?? 1}
+              step={0.05}
+              onCommit={(v) => store().setNodesOpacity(selectedNodeIds, v)}
+            />
+          </div>
+        </div>
+        {advancedMode ? (
+          <ScenePresetSection nodeIds={selectedNodeIds} />
+        ) : (
+          <BlockPresetSection nodeIds={selectedNodeIds} />
+        )}
+        <OutlineSection nodeIds={selectedNodeIds} />
+      </>
+    );
+  }
 
   if (!node) {
     const { settings } = document;
@@ -107,7 +154,6 @@ export const PropertiesPanel: React.FC = () => {
 
   const animations = document.animations[node.id];
   const transform = getLocalTransform(node, animations, currentFrame);
-  const otherNodes = document.nodes.filter((n) => n.id !== node.id);
 
   return (
     <>
@@ -172,21 +218,6 @@ export const PropertiesPanel: React.FC = () => {
         )}
         <div className="prop-row">
           <span />
-          <label>부모</label>
-          <select
-            value={node.parentId ?? ''}
-            onChange={(e) => store().setNodeParent(node.id, e.target.value || null)}
-          >
-            <option value="">(없음)</option>
-            {otherNodes.map((n) => (
-              <option key={n.id} value={n.id}>
-                {n.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="prop-row">
-          <span />
           <label>피벗 X</label>
           <NumberInput value={node.pivot.x} step={1} onCommit={(v) => store().setNodePivot(node.id, 'x', v)} />
         </div>
@@ -197,7 +228,8 @@ export const PropertiesPanel: React.FC = () => {
         </div>
       </div>
 
-      {advancedMode ? <ScenePresetSection nodeId={node.id} /> : <BlockPresetSection nodeId={node.id} />}
+      {advancedMode ? <ScenePresetSection nodeIds={[node.id]} /> : <BlockPresetSection nodeIds={[node.id]} />}
+      <OutlineSection nodeIds={[node.id]} />
 
       <div className="panel-section">
         <div className="panel-section-head">
@@ -240,19 +272,24 @@ export const PropertiesPanel: React.FC = () => {
   );
 };
 
-/** 기본 모드: 프리셋과 숨김을 "선택된 장면"에만 적용한다 (스토리보드 → 키프레임 컴파일) */
-const BlockPresetSection: React.FC<{ nodeId: string }> = ({ nodeId }) => {
+/**
+ * 기본 모드: 프리셋과 숨김을 "선택된 장면"에만 적용한다 (스토리보드 → 키프레임 컴파일).
+ * 여러 노드(그룹 선택)를 받으면 전체에 함께 적용되고, 전부 켜져 있을 때만 켜짐으로 표시한다.
+ */
+const BlockPresetSection: React.FC<{ nodeIds: string[] }> = ({ nodeIds }) => {
   const document = useEditorStore((s) => s.document)!;
   const selectedBlockId = useEditorStore((s) => s.selectedBlockId);
   const store = useEditorStore.getState;
 
   const storyboard = document.storyboard;
   const blockIndex = storyboard?.blocks.findIndex((b) => b.id === selectedBlockId) ?? -1;
-  if (!storyboard || blockIndex < 0) return null;
+  if (!storyboard || blockIndex < 0 || nodeIds.length === 0) return null;
   const block = storyboard.blocks[blockIndex]!;
-  const state = block.nodes[nodeId];
-  const activePresets = state?.presetIds ?? [];
-  const hidden = state?.hidden === true;
+  const activeForAll = (presetId: string) =>
+    nodeIds.every((id) => block.nodes[id]?.presetIds?.includes(presetId) ?? false);
+  const anyPresets = nodeIds.some((id) => (block.nodes[id]?.presetIds?.length ?? 0) > 0);
+  const singleNodeId = nodeIds.length === 1 ? nodeIds[0]! : null;
+  const hidden = singleNodeId ? block.nodes[singleNodeId]?.hidden === true : false;
   const blockStart = blockRanges(storyboard)[blockIndex]!.start;
 
   // 바꾸자마자 그 장면부터 재생해 결과를 바로 보여준다
@@ -264,33 +301,38 @@ const BlockPresetSection: React.FC<{ nodeId: string }> = ({ nodeId }) => {
   return (
     <div className="panel-section">
       <div className="panel-section-head">
-        <span className="panel-label">애니메이션 · 장면 {blockIndex + 1}</span>
-        {activePresets.length > 0 && (
-          <button className="icon-btn" onClick={() => store().clearBlockPresets(block.id, nodeId)}>
+        <span className="panel-label">
+          애니메이션 · 장면 {blockIndex + 1}
+          {nodeIds.length > 1 ? ` · ${nodeIds.length}개` : ''}
+        </span>
+        {anyPresets && (
+          <button className="icon-btn" onClick={() => store().clearBlockPresetsForNodes(block.id, nodeIds)}>
             지우기
           </button>
         )}
       </div>
-      <label className="block-visibility">
-        <input
-          type="checkbox"
-          checked={!hidden}
-          onChange={(e) => {
-            store().setBlockNodeHidden(block.id, nodeId, !e.target.checked);
-            playerController.current?.seekTo(blockStart);
-          }}
-        />
-        이 장면에서 보이기
-      </label>
+      {singleNodeId && (
+        <label className="block-visibility">
+          <input
+            type="checkbox"
+            checked={!hidden}
+            onChange={(e) => {
+              store().setBlockNodeHidden(block.id, singleNodeId, !e.target.checked);
+              playerController.current?.seekTo(blockStart);
+            }}
+          />
+          이 장면에서 보이기
+        </label>
+      )}
       <div className="preset-grid">
         {ANIMATION_PRESETS.map((preset) => (
           <button
             key={preset.id}
             className="preset-chip"
-            data-active={activePresets.includes(preset.id)}
+            data-active={activeForAll(preset.id)}
             title={preset.description}
             onClick={() => {
-              store().toggleBlockPreset(block.id, nodeId, preset.id);
+              store().toggleBlockPresetForNodes(block.id, nodeIds, preset.id);
               previewBlock();
             }}
           >
@@ -300,24 +342,26 @@ const BlockPresetSection: React.FC<{ nodeId: string }> = ({ nodeId }) => {
         ))}
       </div>
       <div className="empty-hint">
-        장면 {blockIndex + 1}에서만 움직여요. 다시 누르면 꺼지고, 겹쳐 쓸 수도 있어요 (숨쉬기 + 끄덕끄덕).
+        {nodeIds.length > 1
+          ? `묶인 파츠 ${nodeIds.length}개에 함께 적용돼요. 장면 ${blockIndex + 1}에서만 움직입니다.`
+          : `장면 ${blockIndex + 1}에서만 움직여요. 다시 누르면 꺼지고, 겹쳐 쓸 수도 있어요 (숨쉬기 + 끄덕끄덕).`}
       </div>
     </div>
   );
 };
 
-/** 고급 모드: 기존 동작 — 프리셋을 장면 전체 길이에 적용한다 */
-const ScenePresetSection: React.FC<{ nodeId: string }> = ({ nodeId }) => {
+/** 고급 모드: 프리셋을 장면 전체 길이에 적용한다. 여러 노드(그룹)면 전체에 함께 적용 */
+const ScenePresetSection: React.FC<{ nodeIds: string[] }> = ({ nodeIds }) => {
   const document = useEditorStore((s) => s.document)!;
   const store = useEditorStore.getState;
-  const animations = document.animations[nodeId];
+  const anyAnimations = nodeIds.some((id) => Object.keys(document.animations[id] ?? {}).length > 0);
 
   return (
     <div className="panel-section">
       <div className="panel-section-head">
-        <span className="panel-label">애니메이션</span>
-        {animations && Object.keys(animations).length > 0 && (
-          <button className="icon-btn" onClick={() => store().clearNodeAnimation(nodeId)}>
+        <span className="panel-label">애니메이션{nodeIds.length > 1 ? ` · ${nodeIds.length}개` : ''}</span>
+        {anyAnimations && (
+          <button className="icon-btn" onClick={() => store().clearNodesAnimation(nodeIds)}>
             지우기
           </button>
         )}
@@ -329,7 +373,7 @@ const ScenePresetSection: React.FC<{ nodeId: string }> = ({ nodeId }) => {
             className="preset-chip"
             title={preset.description}
             onClick={() => {
-              store().applyPreset(nodeId, preset.id);
+              store().applyPresetToNodes(nodeIds, preset.id);
               playerController.current?.seekTo(0);
               playerController.current?.play();
             }}
@@ -339,7 +383,54 @@ const ScenePresetSection: React.FC<{ nodeId: string }> = ({ nodeId }) => {
           </button>
         ))}
       </div>
-      <div className="empty-hint">누르면 바로 재생됩니다. 겹쳐 쓸 수도 있어요 (숨쉬기 + 끄덕끄덕).</div>
+      <div className="empty-hint">
+        {nodeIds.length > 1
+          ? `묶인 파츠 ${nodeIds.length}개에 함께 적용돼요. 누르면 바로 재생됩니다.`
+          : '누르면 바로 재생됩니다. 겹쳐 쓸 수도 있어요 (숨쉬기 + 끄덕끄덕).'}
+      </div>
+    </div>
+  );
+};
+
+const OUTLINE_STYLES: { value: OutlineStyle; label: string }[] = [
+  { value: 'none', label: '없음' },
+  { value: 'solid', label: '실선' },
+  { value: 'dashed', label: '점선' },
+  { value: 'dotted', label: '도트' },
+  { value: 'longdash', label: '긴 점선' },
+];
+
+/** 실루엣 테두리 선 종류. 트레이싱된(outline 보유) 파츠가 선택에 있을 때만 보인다 */
+const OutlineSection: React.FC<{ nodeIds: string[] }> = ({ nodeIds }) => {
+  const document = useEditorStore((s) => s.document)!;
+  const store = useEditorStore.getState;
+
+  const outlined = document.nodes.filter((n) => nodeIds.includes(n.id) && n.outline);
+  if (outlined.length === 0) return null;
+  const styles = new Set(outlined.map((n) => n.outline!.style));
+  const current = styles.size === 1 ? [...styles][0] : null;
+
+  return (
+    <div className="panel-section">
+      <span className="panel-label">테두리{outlined.length > 1 ? ` · ${outlined.length}개` : ''}</span>
+      <div className="preset-grid">
+        {OUTLINE_STYLES.map((s) => (
+          <button
+            key={s.value}
+            className="preset-chip"
+            data-active={current === s.value}
+            onClick={() =>
+              store().setOutlineStyle(
+                outlined.map((n) => n.id),
+                s.value,
+              )
+            }
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+      <div className="empty-hint">캐릭터 실루엣을 따라 그려져요. PNG를 SVG로 변환해 올린 파츠에만 있습니다.</div>
     </div>
   );
 };

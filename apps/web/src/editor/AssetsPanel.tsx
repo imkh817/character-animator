@@ -4,6 +4,7 @@ import { deleteAsset, listAssets } from '../api/endpoints';
 import type { AssetResponse } from '../api/types';
 import { useEditorStore } from '../stores/editorStore';
 import { getUrlImageSize } from './svgSize';
+import { isOutlineEnabled, isTraceEnabled, setOutlineEnabled, setTraceEnabled } from './traceSvg';
 import { useAssetUpload } from './useAssetUpload';
 
 export const AssetsPanel: React.FC = () => {
@@ -15,6 +16,8 @@ export const AssetsPanel: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { uploading, error, setError, uploadFiles } = useAssetUpload();
   const [dragOver, setDragOver] = useState(false);
+  const [traceOn, setTraceOn] = useState(isTraceEnabled);
+  const [outlineOn, setOutlineOn] = useState(isOutlineEnabled);
 
   const addAs = async (asset: AssetResponse, mode: 'part' | 'background') => {
     if (!asset.downloadUrl) return;
@@ -69,6 +72,36 @@ export const AssetsPanel: React.FC = () => {
           });
         }}
       />
+      <label
+        className="trace-toggle"
+        title="배경 제거된 일러스트를 벡터로 변환해 확대해도 깨지지 않게 합니다. 사진은 끄고 올리세요."
+      >
+        <input
+          type="checkbox"
+          checked={traceOn}
+          onChange={(e) => {
+            setTraceOn(e.target.checked);
+            setTraceEnabled(e.target.checked);
+          }}
+        />
+        PNG 업로드 시 SVG로 자동 변환
+      </label>
+      {traceOn && (
+        <label
+          className="trace-toggle trace-toggle--sub"
+          title="캐릭터 실루엣을 따라 점선 테두리를 SVG에 넣습니다. 렌더 영상에도 나옵니다."
+        >
+          <input
+            type="checkbox"
+            checked={outlineOn}
+            onChange={(e) => {
+              setOutlineOn(e.target.checked);
+              setOutlineEnabled(e.target.checked);
+            }}
+          />
+          실루엣 점선 테두리 추가
+        </label>
+      )}
       {error && <div className="error-text">{error}</div>}
       {assets.length === 0 && (
         <div className="empty-hint">

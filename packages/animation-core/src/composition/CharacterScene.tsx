@@ -2,7 +2,7 @@ import React from 'react';
 import { AbsoluteFill, Img, useCurrentFrame } from 'remotion';
 import { layoutBubble } from '../bubble';
 import { buildSceneTree, getLocalTransform, type SceneTreeNode } from '../interpolate';
-import type { BubbleSpec, SceneDocument } from '../types';
+import type { BubbleSpec, NodeOutline, OutlineStyle, SceneDocument } from '../types';
 
 /** assetId → 실제 SVG URL. 에디터는 presigned URL, 워커는 다운로드 URL을 넣는다. */
 export type AssetUrlMap = Record<string, string>;
@@ -72,15 +72,20 @@ const NodeView: React.FC<NodeViewProps> = ({ treeNode, document, assetUrls, fram
       {node.bubble ? (
         <BubbleView spec={node.bubble} />
       ) : assetUrl ? (
-        <Img
-          src={assetUrl}
-          style={{
-            display: 'block',
-            // 명시적 크기 필수: width="100%"인 SVG는 크기를 지정하지 않으면 0으로 붕괴한다
-            width: node.size?.width ?? 200,
-            height: node.size?.height ?? 200,
-          }}
-        />
+        <>
+          <Img
+            src={assetUrl}
+            style={{
+              display: 'block',
+              // 명시적 크기 필수: width="100%"인 SVG는 크기를 지정하지 않으면 0으로 붕괴한다
+              width: node.size?.width ?? 200,
+              height: node.size?.height ?? 200,
+            }}
+          />
+          {node.outline && node.outline.style !== 'none' && node.outline.paths.length > 0 && (
+            <OutlineOverlay outline={node.outline} width={node.size?.width ?? 200} height={node.size?.height ?? 200} />
+          )}
+        </>
       ) : null}
       {children.map((child) => (
         <NodeView key={child.node.id} treeNode={child} document={document} assetUrls={assetUrls} frame={frame} />
@@ -88,6 +93,50 @@ const NodeView: React.FC<NodeViewProps> = ({ treeNode, document, assetUrls, fram
     </div>
   );
 };
+
+const OUTLINE_DEFAULT_COLOR = '#3a3a3a';
+
+/** 선 종류 → stroke-dasharray. 두께에 비례해 간격을 잡는다 (undefined = 실선) */
+function dashArrayFor(style: OutlineStyle, strokeWidth: number): string | undefined {
+  switch (style) {
+    case 'dashed':
+      return `${strokeWidth * 3} ${strokeWidth * 2}`;
+    case 'dotted':
+      // 길이 0 조각 + 둥근 끝 = 동그란 점
+      return `0.1 ${strokeWidth * 2.2}`;
+    case 'longdash':
+      return `${strokeWidth * 6} ${strokeWidth * 3}`;
+    default:
+      return undefined;
+  }
+}
+
+/** 트레이싱된 파츠의 실루엣 테두리. 이미지와 같은 좌표계로 위에 겹쳐 그린다 */
+const OutlineOverlay: React.FC<{ outline: NodeOutline; width: number; height: number }> = ({
+  outline,
+  width,
+  height,
+}) => (
+  <svg
+    width={width}
+    height={height}
+    viewBox={`0 0 ${width} ${height}`}
+    style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none' }}
+  >
+    {outline.paths.map((d, i) => (
+      <path
+        key={i}
+        d={d}
+        fill="none"
+        stroke={outline.color ?? OUTLINE_DEFAULT_COLOR}
+        strokeWidth={outline.strokeWidth}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeDasharray={dashArrayFor(outline.style, outline.strokeWidth)}
+      />
+    ))}
+  </svg>
+);
 
 const FILL = '#ffffff';
 const INK = '#1a1a1a';

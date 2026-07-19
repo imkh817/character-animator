@@ -71,9 +71,9 @@ export const EditorPage: React.FC = () => {
       }
       if ((e.key === 'Delete' || e.key === 'Backspace') && !e.metaKey && !e.ctrlKey) {
         const s = useEditorStore.getState();
-        if (s.selectedNodeId) {
+        if (s.selectedNodeIds.length > 0) {
           e.preventDefault();
-          s.deleteNode(s.selectedNodeId);
+          s.deleteSelectedNodes();
         }
       }
     };

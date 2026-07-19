@@ -12,13 +12,14 @@
   "dependencies": {
     "@charanim/animation-core": "*",
     "@remotion/player": "^4.0.246",
+    "imagetracerjs": "^1.2.6",
+    "immer": "^10.1.1",
     "nanoid": "^5.0.9",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0",
     "remotion": "^4.0.246",
-    "zustand": "^5.0.2",
-    "immer": "^10.1.1"
+    "zustand": "^5.0.2"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",

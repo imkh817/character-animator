@@ -501,6 +501,69 @@ select:focus {
   background: var(--amber);
 }
 
+/* 에셋 패널: PNG → SVG 자동 변환 토글 */
+.trace-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+
+.trace-toggle--sub {
+  padding-left: 18px;
+}
+
+/* 다중 선택에서 대표(마지막 클릭) 외 노드의 외곽선 — 조금 옅게 */
+.selection-rect--secondary {
+  opacity: 0.55;
+}
+
+.selection-rect--secondary::after {
+  display: none;
+}
+
+/* 빈 곳에서 드래그하는 박스 선택 영역 */
+.marquee-rect {
+  position: absolute;
+  border: 1px dashed var(--amber);
+  background: rgba(255, 179, 71, 0.08);
+  pointer-events: none;
+}
+
+/* 선택 위에 뜨는 묶기/해제 버튼 */
+.group-toolbar {
+  position: absolute;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  z-index: 4;
+}
+
+.group-toolbar-btn {
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.55);
+  background: var(--amber);
+  color: #1b1206;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.group-toolbar-btn:hover {
+  filter: brightness(1.1);
+}
+
+/* 레이어 이동처럼 부차적인 버튼은 어두운 톤으로 */
+.group-toolbar-btn--quiet {
+  background: #26262b;
+  color: var(--text, #e8e8ec);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
 .resize-handle {
   position: absolute;
   width: 12px;

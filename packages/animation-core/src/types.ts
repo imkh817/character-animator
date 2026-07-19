@@ -68,6 +68,23 @@ export interface BubbleSpec {
   shape?: BubbleShape;
 }
 
+/** 실루엣 테두리 선 종류 */
+export type OutlineStyle = 'none' | 'solid' | 'dashed' | 'dotted' | 'longdash';
+
+/**
+ * 트레이싱된 파츠의 실루엣 테두리. 업로드(변환) 시점에 윤곽 패스를 추출해 문서에 저장하고,
+ * 렌더러가 이미지 위에 오버레이로 그린다 — 스타일을 언제든 바꿀 수 있고 에셋 재업로드가 필요 없다.
+ */
+export interface NodeOutline {
+  /** 실루엣 윤곽 패스 d 문자열들. 좌표계는 node.size와 같다 */
+  paths: string[];
+  style: OutlineStyle;
+  /** 스트로크 두께(px). 변환 시 이미지 크기에 비례해 정해진다 */
+  strokeWidth: number;
+  /** 생략하면 짙은 회색(#3a3a3a) */
+  color?: string;
+}
+
 export interface SceneNode {
   id: string;
   name: string;
@@ -77,6 +94,11 @@ export interface SceneNode {
   bubble?: BubbleSpec;
   /** 부모 노드. 부모의 트랜스폼을 상속한다 (몸통 회전 → 팔 따라감) */
   parentId: string | null;
+  /**
+   * 에디터 전용 묶음(그룹). 같은 groupId를 가진 노드들은 캔버스에서 하나를
+   * 선택해도 함께 선택·이동된다. 렌더러/워커는 이 필드를 모른다 (additive → schemaVersion 유지)
+   */
+  groupId?: string | null;
   /**
    * 파츠의 렌더 크기(px). SVG는 width="100%" 등 고유 크기가 없는 경우가 흔해
    * (그대로 <img>로 그리면 0으로 붕괴), 에디터가 업로드 시점에 viewBox에서 읽어 기록한다.
@@ -89,6 +111,8 @@ export interface SceneNode {
   visible: boolean;
   /** 에디터 전용: 실수로 선택/수정 방지 */
   locked: boolean;
+  /** 실루엣 테두리 (additive → schemaVersion 유지). 트레이싱된 파츠에만 존재한다 */
+  outline?: NodeOutline;
 }
 
 export type NodeAnimations = Partial<Record<AnimatableProperty, Keyframe[]>>;

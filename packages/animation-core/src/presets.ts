@@ -123,6 +123,62 @@ export const ANIMATION_PRESETS: AnimationPreset[] = [
     },
   },
   {
+    id: 'swingA',
+    emoji: '🦵',
+    label: '스윙 A',
+    description: '관절 기준 앞뒤 스윙. 피벗을 관절(이미지 위쪽)에 두고 다리·팔에 적용하세요',
+    generate: ({ base, fps, durationInFrames }) => ({
+      rotation: loopSequence(base.rotation, [0, 22, 0, -22], fps * 0.2, durationInFrames),
+    }),
+  },
+  {
+    id: 'swingB',
+    emoji: '🦿',
+    label: '스윙 B',
+    description: '스윙 A와 반대 위상. 반대쪽 다리·팔에 적용하면 달리기가 됩니다',
+    generate: ({ base, fps, durationInFrames }) => ({
+      rotation: loopSequence(base.rotation, [0, -22, 0, 22], fps * 0.2, durationInFrames),
+    }),
+  },
+  {
+    id: 'runBob',
+    emoji: '🏃',
+    label: '달리기 들썩',
+    description: '달리는 리듬의 위아래 들썩임. 몸통이나 그룹 전체에 함께 적용해 보세요',
+    generate: ({ base, fps, durationInFrames }) => ({
+      y: loopSequence(base.y, [0, -16], fps * 0.2, durationInFrames),
+    }),
+  },
+  {
+    id: 'blink',
+    emoji: '👁️',
+    label: '눈 깜빡',
+    description: '몇 초마다 빠르게 깜빡입니다. 분리된 눈 파츠에 적용하세요',
+    generate: ({ base, fps, durationInFrames }) => {
+      const last = durationInFrames - 1;
+      const closed = base.scaleY * 0.08;
+      // 약 2.4초마다 한 번, 감기 0.07초 → 감은 채 0.05초 → 뜨기 0.09초
+      const interval = Math.max(4, Math.round(fps * 2.4));
+      const shut = Math.max(1, Math.round(fps * 0.07));
+      const hold = Math.max(1, Math.round(fps * 0.05));
+      const open = Math.max(1, Math.round(fps * 0.09));
+      const scaleY: Keyframe[] = [{ frame: 0, value: base.scaleY, easing: EASE }];
+      for (let t = interval; t + shut + hold + open <= last; t += interval) {
+        scaleY.push(
+          { frame: t, value: base.scaleY, easing: EASE },
+          { frame: t + shut, value: closed, easing: EASE },
+          { frame: t + shut + hold, value: closed, easing: EASE },
+          { frame: t + shut + hold + open, value: base.scaleY, easing: EASE },
+        );
+      }
+      // 장면 끝은 항상 뜬 상태 — 루프 이음새가 없다
+      if (scaleY[scaleY.length - 1]!.frame < last) {
+        scaleY.push({ frame: last, value: base.scaleY, easing: EASE });
+      }
+      return { scaleY };
+    },
+  },
+  {
     id: 'popIn',
     emoji: '🎬',
     label: '등장!',

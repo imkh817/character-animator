@@ -3,8 +3,9 @@ import { useEditorStore } from '../stores/editorStore';
 
 export const LayersPanel: React.FC = () => {
   const document = useEditorStore((s) => s.document)!;
-  const selectedNodeId = useEditorStore((s) => s.selectedNodeId);
+  const selectedNodeIds = useEditorStore((s) => s.selectedNodeIds);
   const selectNode = useEditorStore((s) => s.selectNode);
+  const selectSingleNode = useEditorStore((s) => s.selectSingleNode);
   const setNodeVisible = useEditorStore((s) => s.setNodeVisible);
   const moveLayer = useEditorStore((s) => s.moveLayer);
   const deleteNode = useEditorStore((s) => s.deleteNode);
@@ -22,8 +23,9 @@ export const LayersPanel: React.FC = () => {
         <div
           key={node.id}
           className="layer-row"
-          data-selected={node.id === selectedNodeId}
-          onClick={() => selectNode(node.id)}
+          data-selected={selectedNodeIds.includes(node.id)}
+          title={node.groupId ? '클릭: 그룹 선택 · Alt+클릭: 이 파츠만' : undefined}
+          onClick={(e) => (e.altKey ? selectSingleNode(node.id) : selectNode(node.id))}
         >
           <button
             className="icon-btn"
@@ -38,6 +40,12 @@ export const LayersPanel: React.FC = () => {
           </button>
           <span className="row-name" style={{ opacity: node.visible ? 1 : 0.45 }}>
             {node.name}
+            {node.groupId && (
+              <span title="묶여 있는 노드" style={{ color: 'var(--text-faint)' }}>
+                {' '}
+                🔗
+              </span>
+            )}
             {node.parentId && <span style={{ color: 'var(--text-faint)' }}> ↳</span>}
           </span>
           <span className="row-actions">
